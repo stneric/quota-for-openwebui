@@ -43,7 +43,7 @@ class Filter:
             os.makedirs(data_dir)
 
     def _load_quota_data(self) -> dict:
-        """Lädt die Nutzungsdaten aus der JSON-Datei."""
+        """Loads user data from the JSON file."""
         with file_lock:
             if not os.path.exists(self.valves.QUOTA_DATA_FILE):
                 return {}
@@ -54,15 +54,15 @@ class Filter:
                 return {}
 
     def _save_quota_data(self, data: dict):
-        """Speichert die Nutzungsdaten in der JSON-Datei."""
+        """Saves user data to the JSON file."""
         with file_lock:
             with open(self.valves.QUOTA_DATA_FILE, "w") as f:
                 json.dump(data, f, indent=4)
 
     def inlet(self, body: dict, __user__: Optional[dict] = None) -> dict:
         """
-        Diese Funktion wird vor jeder Anfrage an das LLM ausgeführt.
-        Sie prüft das Kontingent des Nutzers.
+        This function gets called when a request is made.
+        It checks if the user has exceeded their monthly request limit.
         """
         if not __user__ or not __user__.get("id"):
             # If no user can be identified, the request is denied.
