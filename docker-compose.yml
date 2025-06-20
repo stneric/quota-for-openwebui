@@ -1,0 +1,36 @@
+version: '3.8'
+# This Docker Compose file sets up Nginx Proxy Manager and Open WebUI in my configuration.
+services:
+  app:
+    image: 'jc21/nginx-proxy-manager:latest'
+    restart: unless-stopped
+    ports:
+      - '80:80'
+      - '443:443'
+      - '81:81'
+    volumes:
+      - ./data:/data
+      - ./letsencrypt:/etc/letsencrypt
+    networks:
+      - proxy-network 
+
+  openwebui:
+    image: 'ghcr.io/open-webui/open-webui:main'
+    container_name: open-webui
+    restart: unless-stopped
+    volumes:
+      - ./openwebui_data:/app/backend/data
+    networks:
+      - proxy-network
+    # Optional: webui with GPU support
+    # deploy:
+    #   resources:
+    #     reservations:
+    #       devices:
+    #         - driver: nvidia
+    #           count: 1
+    #           capabilities: [gpu]
+
+networks:
+  proxy-network:
+    driver: bridge
