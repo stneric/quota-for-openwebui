@@ -1,15 +1,19 @@
 # Quota Lock - Open WebUI Plugin
 
-A simple but effective filter plugin for [Open WebUI](https://github.com/open-webui/open-webui) that sets a monthly request limit for each user.
+A simple plugin for [Open WebUI](https://github.com/open-webui/open-webui) that sets a monthly request limit for each user. It consists of two parts: a **filter** to enforce the quota and an **action** for users to check their current usage.
 
 This plugin is ideal for server administrators who share an Open WebUI instance with friends, family, or a small team and want to ensure fair usage or manage costs associated with API-based models.
 
-## Note:
-This plugin is not suitable for large scale use! It uses a <ul>single</ul> JSON file to manage quotas.
-For a scalable implementation, either use a DB or (a bit hacky) multiple JSON files named like the user ids.
+### Note:
+This plugin is not suitable for large-scale use! It uses a single JSON file to manage quotas. For a scalable implementation, consider using a database.
+
 ---
 
 ## Features
+
+This plugin provides two key functions that work together:
+
+#### 1. Quota Lock (Filter)
 
 -   **Per-User Quotas**: Each user's request count is tracked individually.
 -   **Monthly Reset**: Quotas automatically reset at the beginning of each calendar month.
@@ -18,41 +22,60 @@ For a scalable implementation, either use a DB or (a bit hacky) multiple JSON fi
 -   **Lightweight**: No external database required. It's a simple, file-based solution.
 -   **Secure**: Denies requests if a user cannot be identified, preventing unauthenticated use from bypassing the quota.
 
+#### 2. Show My Quota (Action)
+
+-   **User-Facing Button**: Adds a function button that allows users to check their quota at any time.
+-   **Displays Current Usage**: Shows the user how many requests they've used, how many are remaining, and what their total monthly limit is.
+
+---
+
 ## Installation
 
-1.  Navigate to the admin panel in open webui
-2.  -> Functions -> Add
-3.  Paste the code from `quota-lock.py` into the editor
-4.  Save and configure
-5.  Configure so it's used globally 
+You need to install two separate components: the filter and the action.
+
+1.  Navigate to the Admin Panel in your Open WebUI instance.
+2.  Go to the **Functions** section.
+
+#### To Install the "Quota Lock" Filter:
+1.  Click add.
+2.  Paste the code from your first file (`quota-lock.py`) into the editor.
+3.  Save the filter.
+4.  **Important**: Configure the filter to be **enabled globally** so it applies to all users and models.
+
+#### To Install the "Show My Quota" Action:
+1.  Click add.
+2.  Paste the code from your new file (`check-quota.py` or similar) into the editor.
+3.  Save the action. The button will now be available to users. Also needs to be **enabled globally**.
+
+---
 
 ## How to Use & Configure
 
-The plugin works automatically once installed. By default, it gives every user **100 requests per month**. When a user exceeds this limit, they will receive an error message and be blocked from making further requests until the next month.
+Once installed and enabled globally, the filter works automatically. It gives every user a default of **100 requests per month**. When a user exceeds this limit, they will receive an error message and be blocked from making further requests until the next month.
 
-### Changing the Request Limit
+Users can click the "Show My Quota" button at any time to see a message like this in their chat:
 
-You can easily change the monthly limit by editing the valves (cog-button in openwebui) or by changing the `filter.py` file.
+> 📊 **Your monthly usage**
+>
+> ▪️ **Used:** 9
+> ▪️ **Remaining:** 91
+> ▪️ **Limit:** 100
 
-1.  Open `open-webui/backend/data/filters/quota_lock/filter.py`.
-2.  Find the `Valves` class inside the `Filter` class.
-3.  Change the `default` value for `MONTHLY_REQUEST_LIMIT`.
+### Changing the Request Limit & Configuration
 
-```python
-# ... (inside the Filter class)
+Both the filter and the action have settings (Valves) that you can configure directly in the Open WebUI Admin Panel.
 
-    # Valves
-    class Valves(BaseModel):
-        MONTHLY_REQUEST_LIMIT: int = Field(
-            default=200,  # <-- CHANGE THIS VALUE
-            description="The maximum number of requests a user can make per month.",
-        )
-# ...
-```
+1.  In the Admin Panel, go to **Tools**.
+2.  Find "Quota Lock" (the filter) and "Show My Quota" (the action).
+3.  Click the **cog icon** to open the valves for each one.
 
-4.  Save the file.
+You will see these two settings:
+-   `MONTHLY_REQUEST_LIMIT`: The maximum number of requests a user can make per month.
+-   `QUOTA_DATA_FILE`: The path to the JSON file for storing usage data.
 
-There's no need to restart openwebui but if there are any issues, give it a try.
+> **⚠️ CRITICAL CONFIGURATION NOTE**
+>
+> For the plugin to work correctly, the values for `MONTHLY_REQUEST_LIMIT` and `QUOTA_DATA_FILE` **must be identical** for both the **Quota Lock (Filter)** and the **Show My Quota (Action)**. If they are different, the action will show incorrect quota information to the user.
 
 ---
 
@@ -60,10 +83,9 @@ There's no need to restart openwebui but if there are any issues, give it a try.
 
 This plugin stores usage data in a file to ensure it persists between server restarts. If you are running Open WebUI in a Docker container, **you must use a volume to persist the data directory.**
 
-The standard `docker run` or `docker-compose.yml` provided by the Open WebUI project already does this by mapping a local folder to `/app/backend/data` inside the container as far as I'm aware.
+The standard `docker run` or `docker-compose.yml` provided by the Open WebUI project should already do this by mapping a local folder to `/app/backend/data` inside the container.
 
 **Example `docker-compose.yml` snippet:**
-
 ```yaml
 services:
   open-webui:
@@ -74,27 +96,32 @@ services:
 volumes:
   open-webui: {}
 ```
-
 As long as you have this volume mapping in place, your plugin and its quota data will be safe. If you run a container without this persistent volume, **all quota data will be lost** every time the container is stopped or recreated.
 
 ---
 
 ## How It Works
 
-The plugin's logic is contained within the `inlet` function, which runs before every request is sent to a language model.
-
+#### Quota Lock (Filter)
+The filter's logic is contained within the `inlet` function, which runs *before* every request is sent to a language model.
 1.  It intercepts the incoming request and identifies the user by their unique ID.
 2.  It loads the usage data from the `quota_data.json` file.
 3.  It checks the current user's request `count` for the current month (e.g., "2025-06").
-4.  If the user's count is less than `MONTHLY_REQUEST_LIMIT`, it increments the count, saves the data back to the file, and allows the request to proceed.
+4.  If the user's count is less than `MONTHLY_REQUEST_LIMIT`, it increments the count, saves the data, and allows the request to proceed.
 5.  If the count has reached the limit, it raises an exception, blocking the request and showing an error to the user.
+
+#### Show My Quota (Action)
+The action runs when a user clicks the corresponding button.
+1. It identifies the currently logged-in user.
+2. It reads the *same* `quota_data.json` file.
+3. It retrieves the user's current `count`, calculates the remaining requests based on the `MONTHLY_REQUEST_LIMIT`, and formats a user-friendly message.
+4. It sends this message directly back to the user's chat interface.
 
 ### Data Storage
 
-The plugin will create a `data` folder and a `quota_data.json` file inside its directory (`backend/data/filters/quota_lock/`). The data is stored in a simple JSON format, mapping user IDs to their monthly usage.
+The plugin uses a `quota_data.json` file stored in the location specified by the `QUOTA_DATA_FILE` valve (defaulting to `data/quota_data.json` relative to the `backend` directory). The data is stored in a simple JSON format, mapping user IDs to their monthly usage.
 
 **Example `quota_data.json`:**
-
 ```json
 {
     "3ca79777-2ef1-46cc-a07e-31cdd54dbf4d": {
@@ -104,16 +131,16 @@ The plugin will create a `data` folder and a `quota_data.json` file inside its d
     },
     "836805d6-3dae-41ea-905b-813e7dbc46f3": {
         "2025-06": {
-            "count": 10
+            "count": 100
         }
     }
 }
 ```
-
 -   **`3ca797...`**: The unique ID of a user.
 -   **`2025-06`**: The year and month the count applies to.
 -   **`count`**: The number of requests made by that user in that month.
 
 ---
+
 *Author: Eric Stein*
-*Version: 1.0.0*
+*Version: 2.0.0*
